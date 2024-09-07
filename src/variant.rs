@@ -3,8 +3,11 @@ use crate::{
 };
 use serde::Serialize;
 use std::convert::TryFrom;
+use std::mem;
 use windows::core::{IUnknown, Interface, BSTR, VARIANT};
 use windows::Win32::Foundation::{VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE};
+use windows::Win32::System::Com::{SAFEARRAY, SAFEARRAYBOUND};
+use windows::Win32::System::Ole::{SafeArrayCreate, SafeArrayPutElement};
 use windows::Win32::System::Variant::*;
 use windows::Win32::System::Wmi::{self, IWbemClassObject, CIMTYPE_ENUMERATION};
 
@@ -72,6 +75,60 @@ macro_rules! cast_num {
     };
 }
 
+pub trait FromVariant {
+    fn from_variant(variant: &Variant) -> Option<Self>
+    where
+        Self: Sized;
+}
+impl FromVariant for String {
+    fn from_variant(variant: &Variant) -> Option<Self> {
+        match variant {
+            Variant::String(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
+}
+
+fn create_variant_from_strings(params: &[String]) -> WMIResult<VARIANT> {
+
+    unsafe  {
+        let mut rgsaBounds = vec![SAFEARRAYBOUND::default();1];
+        rgsaBounds[0].cElements = params.len() as u32;
+        rgsaBounds[0].lLbound = 0;
+        let psa: *mut SAFEARRAY = SafeArrayCreate(VT_BSTR, 1, rgsaBounds.as_ptr() );
+        if psa.is_null() {
+            return Err(WMIError::SerdeError("Failed to create SAFEARRAY.".into()))
+        }
+        // 将字符串转换为 BSTR 并放入 SAFEARRAY 中
+        for (i, s) in params.iter().enumerate() {
+            // 将字符串转换为 BSTR 类型
+            let bstr: BSTR = BSTR::from(s);
+            // 将 BSTR 放入 SAFEARRAY 的指定索引位置
+            SafeArrayPutElement(psa, &mut (i as i32), bstr.as_ptr() as *const _)?;
+        }
+        // 创建一个 VARIANT 并将 SAFEARRAY 作为其值
+        let variant = windows_core::imp::VARIANT {
+            Anonymous: windows_core::imp::VARIANT_0 {
+                Anonymous: windows_core::imp::VARIANT_0_0 {
+                    vt: VT_BSTR.0 | VT_ARRAY.0, // 指定这是一个 BSTR 数组类型的 VARIANT
+                    wReserved1: 0,
+                    wReserved2: 0,
+                    wReserved3: 0,
+                    Anonymous: windows_core::imp::VARIANT_0_0_0 {
+                        parray: psa as *mut _,
+                    },
+                },
+            },
+        };
+        Ok(VARIANT::from_raw(variant))
+
+    }
+
+
+
+
+
+}
 impl Variant {
     /// Create a `Variant` instance from a raw `VARIANT`.
     ///
@@ -181,6 +238,61 @@ impl Variant {
         };
 
         Ok(variant_value)
+    }
+    pub fn to_variant(vt: &Variant) -> WMIResult<VARIANT> {
+        let v = match vt {
+            Variant::Empty => {
+                VARIANT::default()
+            }
+            Variant::Null => {VARIANT::default()}
+            Variant::String(val) => {
+                VARIANT::from(BSTR::from(val.as_str()))
+            }
+            Variant::I1(val) => VARIANT::from(*val),
+            Variant::I2(val) => VARIANT::from(*val),
+            Variant::I4(val) => VARIANT::from(*val),
+            Variant::I8(val) => VARIANT::from(*val),
+            Variant::R4(val) => VARIANT::from(*val),
+            Variant::R8(val) => VARIANT::from(*val),
+            Variant::Bool(val) => VARIANT::from(*val),
+            Variant::UI1(val) => VARIANT::from(*val),
+            Variant::UI2(val) => VARIANT::from(*val),
+            Variant::UI4(val) => VARIANT::from(*val),
+            Variant::UI8(val) => VARIANT::from(*val),
+            Variant::Array(val) => {
+                let a:Vec<String> = val.into_iter()
+                    .map(|item| match item {
+                        Variant::String(s) => s.to_string(),
+                        _ => unreachable!(),
+                    })
+                    .collect();
+                create_variant_from_strings(&a)?
+            },
+            _ => {
+                return Err(WMIError::SerdeError("unknown type".into()))
+            }
+        };
+        Ok(v)
+    }
+
+    pub fn to_vec<T: 'static>(&self) -> Vec<T>
+    where
+        T: Clone + FromVariant,
+    {
+        match self {
+            // 如果是数组类型，将其元素提取出来
+            Variant::Array(variants) => {
+                let mut result = Vec::new();
+                for variant in variants {
+                    if let Some(value) = T::from_variant(variant) {
+                        result.push(value);
+                    }
+                }
+                result
+            }
+            // 如果不是数组类型，返回空的Vec
+            _ => Vec::new(),
+        }
     }
 
     /// Convert the variant it to a specific type.

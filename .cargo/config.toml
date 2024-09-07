@@ -1,0 +1,32 @@
+[source.crates-io]
+registry = "https://github.com/rust-lang/crates.io-index"
+replace-with = 'ustc'
+
+[source.ustc]
+registry = "http://mirrors.ustc.edu.cn/crates.io-index"
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=lld-link","-C", "target-feature=+crt-static","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src\\mirrors.ustc.edu.cn-15f9db60536bad60=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\git\\checkouts="]
+
+
+[target.x86_64-pc-windows-gnu]
+linker = "D:\\environ\\mingw\\x86_64-8.1.0-release-win32-seh-rt_v6-rev0\\bin\\x86_64-w64-mingw32-gcc.exe"
+rustflags = ["--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src\\mirrors.ustc.edu.cn-15f9db60536bad60=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\git\\checkouts="]
+
+
+[target.i686-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=lld-link","-C", "target-feature=+crt-static","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src\\mirrors.ustc.edu.cn-c'c=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\git\\checkouts="]
+
+
+[target.i686-pc-windows-gnu]
+linker = "D:\\environ\\mingw\\i686-7.3.0-release-win32-dwarf-rt_v5-rev0\\bin\\i686-w64-mingw32-gcc.exe"
+rustflags = ["--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src\\mirrors.ustc.edu.cn-15f9db60536bad60=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\git\\checkouts="]
+
+
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=ld.lld", "--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\registry\\src\\mirrors.ustc.edu.cn-15f9db60536bad60=","--remap-path-prefix","D:\\environ\\rust\\cargo_home\\git\\checkouts="]
+

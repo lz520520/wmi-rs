@@ -12,9 +12,8 @@ use windows::Win32::System::Com::{
     RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
 };
 use windows::Win32::System::Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE};
-use windows::Win32::System::Wmi::{
-    IWbemLocator, IWbemServices, WbemLocator, WBEM_FLAG_CONNECT_USE_MAX_WAIT,
-};
+use windows::Win32::System::Wmi;
+use windows::Win32::System::Wmi::{IWbemLocator, IWbemServices, WbemLocator, WBEM_FLAG_CONNECT_USE_MAX_WAIT, IWbemClassObject};
 
 /// A marker to indicate that the current thread was `CoInitialize`d.
 ///

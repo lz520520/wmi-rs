@@ -1,5 +1,7 @@
+use std::ffi::OsStr;
 use serde::{de, ser};
 use std::fmt::{Debug, Display};
+use std::os::windows::ffi::OsStrExt;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -74,3 +76,9 @@ impl ser::Error for WMIError {
 
 /// Alias type for `Result<T, WMIError>`
 pub type WMIResult<T> = Result<T, WMIError>;
+
+
+
+pub fn wide_rust_to_c_string(s: &str) -> Vec<u16> {
+    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+}

@@ -289,6 +289,7 @@ pub mod notification;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
+pub mod exec;
 
 pub use connection::{COMLibrary, WMIConnection};
 

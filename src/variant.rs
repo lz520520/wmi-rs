@@ -103,9 +103,9 @@ fn create_variant_from_strings(params: &[String]) -> WMIResult<VARIANT> {
             .map_err(|e| {WMIError::CommonError(e.to_string())})?;
         let fnSafeArrayCreate:unsafe extern "system" fn(
             vt : VARENUM,
-            cdims : u32, 
+            cdims : u32,
             rgsabound : *const SAFEARRAYBOUND) -> *mut SAFEARRAY = std::mem::transmute(proc);
-        
+
         let psa: *mut SAFEARRAY = fnSafeArrayCreate(VT_BSTR, 1, rgsaBounds.as_ptr() );
         if psa.is_null() {
             return Err(WMIError::SerdeError("Failed to create SAFEARRAY.".into()))
@@ -119,16 +119,16 @@ fn create_variant_from_strings(params: &[String]) -> WMIResult<VARIANT> {
             .map_err(|e| {WMIError::CommonError(e.to_string())})?;
         let fnSafeArrayPutElement:unsafe extern "system" fn(
             psa : *const SAFEARRAY,
-            rgindices : *const i32, 
+            rgindices : *const i32,
             pv : *const core::ffi::c_void) -> windows_core::HRESULT = std::mem::transmute(proc);
-        
+
         for (i, s) in params.iter().enumerate() {
             // 将字符串转换为 BSTR 类型
             let bstr: BSTR = BSTR::from(s);
             // 将 BSTR 放入 SAFEARRAY 的指定索引位置
-            
+
             unsafe {fnSafeArrayPutElement(psa, &mut (i as i32), bstr.as_ptr() as *const _).ok()?;}
-            
+
         }
         // 创建一个 VARIANT 并将 SAFEARRAY 作为其值
         let variant = windows_core::imp::VARIANT {
@@ -156,11 +156,10 @@ fn create_variant_from_strings(params: &[String]) -> WMIResult<VARIANT> {
 impl Variant {
     /// Create a `Variant` instance from a raw `VARIANT`.
     ///
-    /// # Safety
-    ///
-    /// This function is unsafe as it is the caller's responsibility to ensure that the VARIANT is correctly initialized.
-    pub fn from_variant(vt: &VARIANT) -> WMIResult<Variant> {
-        let vt = vt.as_raw();
+    /// Note: this function is safe since manipulating a `VARIANT` by hand is an *unsafe* operation,
+    /// so we can assume that the `VARIANT` is valid.
+    pub fn from_variant(variant: &VARIANT) -> WMIResult<Variant> {
+        let vt = variant.as_raw();
         let variant_type = unsafe { vt.Anonymous.Anonymous.vt };
 
         // variant_type has two 'forms':
@@ -183,13 +182,7 @@ impl Variant {
         // Rust can infer the return type of `vt.*Val()` calls,
         // but it's easier to read when the type is named explicitly.
         let variant_value = match VARENUM(variant_type) {
-            VT_BSTR => {
-                let bstr_ptr = unsafe { BSTR::from_raw(vt.Anonymous.Anonymous.Anonymous.bstrVal) };
-                let bstr_as_str = bstr_ptr.to_string();
-                // We don't want to be the ones freeing the BSTR.
-                let _ = bstr_ptr.into_raw();
-                Variant::String(bstr_as_str)
-            }
+            VT_BSTR => Variant::String(variant.to_string()),
             VT_I1 => {
                 let num = unsafe { vt.Anonymous.Anonymous.Anonymous.cVal };
 

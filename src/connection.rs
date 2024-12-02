@@ -2,18 +2,19 @@ use crate::utils::WMIResult;
 use crate::WMIError;
 use log::debug;
 use std::marker::PhantomData;
+use std::ptr::{null, null_mut};
 use windows::core::BSTR;
 use windows::Win32::Foundation::RPC_E_TOO_LATE;
+use windows::Win32::System::Com::{  CLSCTX_INPROC_SERVER, RPC_C_AUTHN_LEVEL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL};
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoSetProxyBlanket, CLSCTX_INPROC_SERVER, RPC_C_AUTHN_LEVEL_CALL,
-};
-use windows::Win32::System::Com::{
-    CoInitializeEx, CoInitializeSecurity, COINIT_MULTITHREADED, EOAC_NONE,
+     COINIT_MULTITHREADED, EOAC_NONE,
     RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE,
 };
 use windows::Win32::System::Rpc::{RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE};
 use windows::Win32::System::Wmi;
 use windows::Win32::System::Wmi::{IWbemLocator, IWbemServices, WbemLocator, WBEM_FLAG_CONNECT_USE_MAX_WAIT, IWbemClassObject};
+use windows_core::{Interface, Param, HRESULT, PCWSTR};
+use crate::dll_helper::DllHelper;
 
 /// A marker to indicate that the current thread was `CoInitialize`d.
 ///
@@ -62,7 +63,18 @@ impl COMLibrary {
     /// `CoInitialize`s the COM library for use by the calling thread, but without setting the security context.
     ///
     pub fn without_security() -> WMIResult<Self> {
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok()? }
+        let ole32 = DllHelper::new(obfstr::obfstr!("ole32.dll"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+        let proc = ole32.get_fn(obfstr::obfstr!("CoInitializeEx"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+        unsafe {
+            let fnCoInitializeEx:unsafe extern "system" fn(
+                pvreserved : *const core::ffi::c_void,
+                dwcoinit : u32
+            ) -> HRESULT = std::mem::transmute(proc);
+            fnCoInitializeEx(null(), COINIT_MULTITHREADED.0 as _).ok()?
+        }
 
         let instance = Self {
             _phantom: PhantomData,
@@ -98,17 +110,33 @@ impl COMLibrary {
 
     fn init_security(&self) -> WMIResult<()> {
         unsafe {
-            CoInitializeSecurity(
-                None,
+            let ole32 = DllHelper::new(obfstr::obfstr!("ole32.dll"))
+                .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+            let proc = ole32.get_fn(obfstr::obfstr!("CoInitializeSecurity"))
+                .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+            let fnCoInitializeSecurity:unsafe extern "system" fn(
+                psecdesc : windows::Win32::Security::PSECURITY_DESCRIPTOR,
+                cauthsvc : i32,
+                asauthsvc : *const windows::Win32::System::Com::SOLE_AUTHENTICATION_SERVICE, 
+                preserved1 : *const core::ffi::c_void,
+                dwauthnlevel : RPC_C_AUTHN_LEVEL, 
+                dwimplevel : RPC_C_IMP_LEVEL, 
+                pauthlist : *const core::ffi::c_void, 
+                dwcapabilities : u32, 
+                preserved3 : *const core::ffi::c_void) -> HRESULT = std::mem::transmute(proc);
+            
+            fnCoInitializeSecurity(
+                windows::Win32::Security::PSECURITY_DESCRIPTOR::default(),
                 -1, // let COM choose.
-                None,
-                None,
+                null(),
+                null(),
                 RPC_C_AUTHN_LEVEL_DEFAULT,
                 RPC_C_IMP_LEVEL_IMPERSONATE,
-                None,
-                EOAC_NONE,
-                None,
-            )?;
+                null(),
+                EOAC_NONE.0 as _,
+                null(),
+            ).ok()?;
         };
 
         Ok(())
@@ -164,16 +192,30 @@ impl WMIConnection {
         debug!("Calling CoSetProxyBlanket");
 
         unsafe {
-            CoSetProxyBlanket(
-                &self.svc,
+            let ole32 = DllHelper::new(obfstr::obfstr!("ole32.dll"))
+                .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+            let proc = ole32.get_fn(obfstr::obfstr!("CoSetProxyBlanket"))
+                .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+            let fnCoSetProxyBlanket:unsafe extern "system" fn(
+                pproxy : * mut core::ffi::c_void,
+                dwauthnsvc : u32,
+                dwauthzsvc : u32,
+                pserverprincname : PCWSTR,
+                dwauthnlevel : RPC_C_AUTHN_LEVEL,
+                dwimplevel : RPC_C_IMP_LEVEL,
+                pauthinfo : *const core::ffi::c_void,
+                dwcapabilities : u32) -> HRESULT = std::mem::transmute(proc);
+            fnCoSetProxyBlanket(
+                self.svc.as_raw(),
                 RPC_C_AUTHN_WINNT, // RPC_C_AUTHN_xxx
                 RPC_C_AUTHZ_NONE,  // RPC_C_AUTHZ_xxx
-                None,
+                PCWSTR::null(),
                 RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
                 RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-                None,                        // client identity
-                EOAC_NONE,                   // proxy capabilities
-            )?;
+                null(),                        // client identity
+                EOAC_NONE.0 as _,                   // proxy capabilities
+            ).ok()?;
         }
 
         Ok(())
@@ -183,7 +225,24 @@ impl WMIConnection {
 fn create_locator() -> WMIResult<IWbemLocator> {
     debug!("Calling CoCreateInstance for CLSID_WbemLocator");
 
-    let loc = unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER)? };
+    let loc = unsafe {
+        let ole32 = DllHelper::new(obfstr::obfstr!("ole32.dll"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+        let proc = ole32.get_fn(obfstr::obfstr!("CoCreateInstance"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+        
+        let mut result__ = null_mut();
+        let fnCoCreateInstance:unsafe extern "system" fn(
+            rclsid : *const windows_core::GUID,
+            punkouter : * mut core::ffi::c_void,
+            dwclscontext : windows::Win32::System::Com::CLSCTX,
+            riid : *const windows_core::GUID,
+            ppv : *mut *mut core::ffi::c_void) -> HRESULT = std::mem::transmute(proc);
+         fnCoCreateInstance(&WbemLocator, null_mut(), CLSCTX_INPROC_SERVER, &IWbemLocator::IID, &mut result__).ok()?;
+        windows_core::Type::<IWbemLocator>::from_abi(result__)?
+    };
+    // let loc = unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER)? };
 
     debug!("Got locator {:?}", loc);
 

@@ -50,6 +50,9 @@ pub enum WMIError {
     UnimplementedArrayItem,
     #[error("Invalid variant {0} during deserialization")]
     InvalidDeserializationVariantError(String),
+
+    #[error("WMI error: {0}")]
+    CommonError(String),
 }
 
 impl From<windows::core::Error> for WMIError {

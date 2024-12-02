@@ -7,9 +7,9 @@ use std::mem;
 use windows::core::{IUnknown, Interface, BSTR, VARIANT};
 use windows::Win32::Foundation::{VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE};
 use windows::Win32::System::Com::{SAFEARRAY, SAFEARRAYBOUND};
-use windows::Win32::System::Ole::{SafeArrayCreate, SafeArrayPutElement};
 use windows::Win32::System::Variant::*;
 use windows::Win32::System::Wmi::{self, IWbemClassObject, CIMTYPE_ENUMERATION};
+use crate::dll_helper::DllHelper;
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -95,16 +95,40 @@ fn create_variant_from_strings(params: &[String]) -> WMIResult<VARIANT> {
         let mut rgsaBounds = vec![SAFEARRAYBOUND::default();1];
         rgsaBounds[0].cElements = params.len() as u32;
         rgsaBounds[0].lLbound = 0;
-        let psa: *mut SAFEARRAY = SafeArrayCreate(VT_BSTR, 1, rgsaBounds.as_ptr() );
+
+        let oleaut32 = DllHelper::new(obfstr::obfstr!("oleaut32.dll"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+        let proc = oleaut32.get_fn(obfstr::obfstr!("SafeArrayCreate"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+        let fnSafeArrayCreate:unsafe extern "system" fn(
+            vt : VARENUM,
+            cdims : u32, 
+            rgsabound : *const SAFEARRAYBOUND) -> *mut SAFEARRAY = std::mem::transmute(proc);
+        
+        let psa: *mut SAFEARRAY = fnSafeArrayCreate(VT_BSTR, 1, rgsaBounds.as_ptr() );
         if psa.is_null() {
             return Err(WMIError::SerdeError("Failed to create SAFEARRAY.".into()))
         }
         // 将字符串转换为 BSTR 并放入 SAFEARRAY 中
+
+        let ole32 = DllHelper::new(obfstr::obfstr!("oleaut32.dll"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+
+        let proc = ole32.get_fn(obfstr::obfstr!("SafeArrayPutElement"))
+            .map_err(|e| {WMIError::CommonError(e.to_string())})?;
+        let fnSafeArrayPutElement:unsafe extern "system" fn(
+            psa : *const SAFEARRAY,
+            rgindices : *const i32, 
+            pv : *const core::ffi::c_void) -> windows_core::HRESULT = std::mem::transmute(proc);
+        
         for (i, s) in params.iter().enumerate() {
             // 将字符串转换为 BSTR 类型
             let bstr: BSTR = BSTR::from(s);
             // 将 BSTR 放入 SAFEARRAY 的指定索引位置
-            SafeArrayPutElement(psa, &mut (i as i32), bstr.as_ptr() as *const _)?;
+            
+            unsafe {fnSafeArrayPutElement(psa, &mut (i as i32), bstr.as_ptr() as *const _).ok()?;}
+            
         }
         // 创建一个 VARIANT 并将 SAFEARRAY 作为其值
         let variant = windows_core::imp::VARIANT {

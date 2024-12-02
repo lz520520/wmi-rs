@@ -1,7 +1,7 @@
 use serde::de;
 use windows::Win32::System::Wmi;
 use windows::Win32::System::Wmi::{IWbemClassObject};
-use windows_core::{BSTR, PCWSTR, VARIANT};
+use windows_core::{BSTR, PCWSTR};
 use crate::utils::{ wide_rust_to_c_string};
 use crate::{Variant, WMIConnection, WMIError, WMIResult};
 use crate::de::wbem_class_de::from_wbem_class_obj;
